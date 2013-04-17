@@ -487,6 +487,27 @@ class ComplexTest(unittest.TestCase):
         self.assertEqual(b.name, "b")
         self.assertEqual(b.type, "B")
 
+    def test_recursion(self):
+
+        class StackTrace(xsd.ComplexType):
+            line = xsd.Element(xsd.String)
+            inner = xsd.Element('StackTrace')
+
+        st = StackTrace()
+        st.line = 'line 1'
+        st.inner = StackTrace(line='line 2')
+        EXPECTED_XML = """<recursion>
+  <line>line 1</line>
+  <inner>
+    <line>line 2</line>
+  </inner>
+</recursion>
+"""
+        self.assertEqual(EXPECTED_XML, st.xml('recursion'))
+        parsed_st = StackTrace.parsexml(EXPECTED_XML)
+        self.assertEqual(parsed_st.line, st.line)
+        self.assertEqual(parsed_st.inner.line, st.inner.line)
+
 
 class XmlParsingTest(unittest.TestCase):
     SIMPLE_XML = """<flight>

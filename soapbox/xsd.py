@@ -619,6 +619,19 @@ class Element(object):
         else:
             return '%s<%s>' % (self.__class__.__name__, self._type.__class__.__name__)
 
+    def __get__(self, instance, cls):
+        if instance is None:
+            return self
+        name = self._name
+        if name in instance.__dict__:
+            return instance.__dict__[name]
+        value = self.accept(self.empty_value())
+        instance.__dict__[name] = value
+        return value
+
+    def __set__(self, instance, value):
+        instance.__dict__[self._name] = self.accept(value)
+
 
 class ClassNamedElement(Element):
     '''
@@ -866,6 +879,7 @@ class ComplexTypeMetaInfo(object):
         self.groups = sorted(self.groups, key=lambda f: f._creation_number)
         self.allelements = sorted(self.fields + self.groups, key=lambda f: f._creation_number)
         self.all = sorted(self.fields + self.groups + self.attributes, key=lambda f: f._creation_number)
+        self.names = set(elt._name for elt in self.all)
 
 
 class Complex_PythonType(Type_PythonType):
@@ -893,14 +907,6 @@ class ComplexType(Type):
 
     __metaclass__ = Complex_PythonType
 
-    def __new__(cls, *args, **kwargs):
-        '''
-        '''
-        instance = super(ComplexType, cls).__new__(cls)
-        for field in instance._meta.all:
-            setattr(instance, field._name, field.empty_value())
-        return instance
-
     def __init__(self, **kwargs):
         '''
         '''
@@ -910,14 +916,10 @@ class ComplexType(Type):
     def __setattr__(self, attr, value):
         '''
         '''
-        if attr == '_xmlelement':
+        if attr == '_xmlelement' or attr in self._meta.names:
             super(ComplexType, self).__setattr__(attr, value)
         else:
-            try:
-                field = self._find_field(self._meta.all, attr)
-                super(ComplexType, self).__setattr__(attr, field.accept(value))
-            except IndexError:
-                raise AttributeError("Model '%s' doesn't have attribute '%s'." % (self.__class__.__name__, attr))
+            raise AttributeError("Model '%s' doesn't have attribute '%s'." % (self.__class__.__name__, attr))
 
     def accept(self, value):
         '''
