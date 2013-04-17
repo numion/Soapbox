@@ -87,9 +87,15 @@ class TypeRegister(object):
     def find_type(self, typeid):
         '''
         '''
-        for clazz in self.types:
-            if clazz.__name__ == typeid:
-                return clazz
+        if '.' in typeid:
+            module, typeid = typeid.rsplit('.', 1)
+            for clazz in self.types:
+                if clazz.__module__ == module and clazz.__name__ == typeid:
+                    return clazz
+        else:
+            for clazz in self.types:
+                if clazz.__name__ == typeid:
+                    return clazz
 
 
 USER_TYPE_REGISTER = TypeRegister()
@@ -1116,7 +1122,30 @@ class UnsignedInt(Int):
 class List(SimpleType):
     '''
     '''
-    pass
+    base = None
+
+    def __init__(self, base=None):
+        '''
+        '''
+        if base is not None:
+            self.base = base
+
+    def accept(self, value):
+        '''
+        '''
+        if value is None:
+            return []
+        return map(self.base.accept, value)
+
+    def xmlvalue(self, value):
+        '''
+        '''
+        return ' '.join(map(self.base.xmlvalue, value))
+
+    def pythonvalue(self, xmlvalue):
+        '''
+        '''
+        return map(self.base.pythonvalue, xmlvalue.split())
 
 
 class AnyURI(String):

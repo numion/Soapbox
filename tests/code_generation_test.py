@@ -95,6 +95,25 @@ xmlns="http://flightdataservices.com/ops.xsd">
   </xsd:complexType>
   <xsd:element name="status" type="sns:status"/>
   <xsd:element name="ops" type="sns:ops"/>
+  <xsd:simpleType name="access">
+    <xsd:list>
+      <xsd:simpleType>
+        <xsd:restriction base="xsd:string">
+          <xsd:enumeration value="None">
+            <xsd:annotation>
+              <xsd:appinfo>0</xsd:appinfo>
+            </xsd:annotation>
+          </xsd:enumeration>
+          <xsd:enumeration value="Read">
+            <xsd:annotation>
+              <xsd:appinfo>1</xsd:appinfo>
+            </xsd:annotation>
+          </xsd:enumeration>
+        </xsd:restriction>
+      </xsd:simpleType>
+    </xsd:list>
+  </xsd:simpleType>
+  <xsd:element name="access" type="sns:access"/>
 </xsd:schema>
 """
 

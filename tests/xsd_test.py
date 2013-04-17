@@ -368,6 +368,26 @@ class DatetimeTest(unittest.TestCase):
         self.assertEqual(datetime(2011, 6, 30, 19, 19, 0), test.datetime.astimezone(iso8601.UTC).replace(tzinfo=None))
 
 
+class ListTypeTest(unittest.TestCase):
+
+    def test(self):
+        class CodeType(xsd.List):
+            base = xsd.Int(enumeration=[1, 3, 5])
+        class Status(xsd.ComplexType):
+            codes = xsd.Element(CodeType)
+
+        status = Status()
+        status.codes = [3, 5]
+        EXPECTED_XML = '<status>\n  <codes>3 5</codes>\n</status>\n'
+        self.assertEqual(EXPECTED_XML, status.xml('status'))
+        parsed_status = Status.parsexml(EXPECTED_XML)
+        self.assertEqual(parsed_status.codes, [3, 5])
+
+        status = Status()
+        with self.assertRaises(ValueError):
+            status.codes = [7]
+
+
 class ComplexTest(unittest.TestCase):
 
     def test_rendering(self):

@@ -6,9 +6,15 @@
 {# [blank line] #}
 {# [blank line] #}
 {#- Simple Types -#}
-{%- for st in schema.simpleTypes %}
-{%- if st.restriction %}
-class {{ st.name|capitalize }}({{ st.restriction.base|type }}):
+{%- for typedef in schema.simpleTypes %}
+{%- if typedef.restriction %}
+{%- set cname = typedef.name %}
+{%- set st = typedef %}
+{%- elif typedef.list %}
+{%- set cname = typedef.name + 'XSDContent' %}
+{%- set st = typedef.list.base %}
+{%- endif %}
+class {{ cname|capitalize }}({{ st.restriction.base|type }}):
     '''
     '''
 {%- if st.restriction.enumerations %}
@@ -32,13 +38,15 @@ class {{ st.name|capitalize }}({{ st.restriction.base|type }}):
         and not st.restriction.maxInclusive and not st.restriction.maxExclusive %}
     pass
 {%- endif %}
-
-{% endif %}
-{%- if st.list %}
-class {{ st.name|capitalize }}(xsd.List):
+{# [blank line] #}
+{# [blank line] #}
+{%- if typedef.list %}
+class {{ typedef.name|capitalize }}(xsd.List):
     '''
     '''
-    pass
+    base = {{ cname|capitalize }}()
+{# [blank line] #}
+{# [blank line] #}
 {%- endif %}
 {%- endfor %}
 {#- Attribute Groups -#}

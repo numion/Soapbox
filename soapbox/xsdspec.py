@@ -73,7 +73,7 @@ class List(xsd.ComplexType):
     '''
     '''
     NAMESPACE = 'http://www.w3.org/2001/XMLSchema'
-    pass
+    base = xsd.Element(__module__ + '.SimpleType', tagname='simpleType')
 
 
 class SimpleType(xsd.ComplexType):
