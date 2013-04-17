@@ -187,6 +187,12 @@ def get_wsdl_classes(soap_namespace):
         documentation = xsd.Element(xsd.String)
         ports = xsd.ListElement(Port, 'port')
 
+    class Import(xsd.ComplexType):
+        '''
+        '''
+        namespace = xsd.Attribute(xsd.String)
+        location = xsd.Attribute(xsd.String)
+
     class Definitions(xsd.ComplexType):
         '''
         '''
@@ -196,6 +202,7 @@ def get_wsdl_classes(soap_namespace):
         portTypes = xsd.ListElement(PortType, 'portType')
         bindings = xsd.ListElement(Binding, 'binding')
         services = xsd.ListElement(Service, 'service')
+        imports = xsd.ListElement(Import, 'import')
 
     SCHEMA = xsd.Schema(
         targetNamespace='http://schemas.xmlsoap.org/wsdl/',
@@ -204,7 +211,7 @@ def get_wsdl_classes(soap_namespace):
         attributeGroups=[],
         groups=[],
         complexTypes=[Types, Part, Message, Input, Operation, PortType, Binding,
-                      Port, Service, Definitions],
+                      Port, Service, Import, Definitions],
         elements={})
 
     class wsdl(object):
@@ -228,6 +235,7 @@ def get_wsdl_classes(soap_namespace):
             self.SOAP_Operation = SOAP_Operation
             self.Service = Service
             self.Types = Types
+            self.Import = Import
 
     return wsdl()
 
