@@ -81,7 +81,7 @@ def {{ operation.name }}(request, {{ inputMessage.part.element|remove_namespace 
     name='{{ port.name }}',
     targetNamespace='{{ definitions.targetNamespace }}',
     location='{{ port.address.location|url_template }}',
-    schema=Schema_{{ schema_name(definitions.types.schema.targetNamespace) }},
+    schema={{ schema_name(definitions.types.schema.targetNamespace) }},
     version=soap.SOAPVersion.SOAP11,
     methods=[{% for o in binding.operations %}{{ o.name }}_method{% if not loop.last %}, {% endif %}{% endfor %}],
 )

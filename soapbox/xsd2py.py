@@ -10,21 +10,26 @@
 
 
 import argparse
-import hashlib
+import functools
+import itertools
+import jinja2
 import keyword
 import logging
+import lxml.etree
+import operator
 import textwrap
-
-from jinja2 import Environment, PackageLoader
-from lxml import etree
+import zope.dottedname.resolve
 
 from .xsdspec import Schema
 from .utils import (
     NAMESPACES,
     capitalize,
-    get_get_type,
+    Named,
+    notbuiltin,
     open_document,
     remove_namespace,
+    split_qname,
+    toposort,
     url_template,
     use,
 )
@@ -40,6 +45,14 @@ except ImportError:
 
 
 TEMPLATE_PACKAGE = 'soapbox.templates'
+TEMPLATE_PREAMBLE = """\
+from soapbox import xsd
+from soapbox.xsd import UNBOUNDED
+from soapbox.utils import dict2object
+
+_ = dict2object(globals())
+
+"""
 
 
 ################################################################################
@@ -53,69 +66,195 @@ logger.addHandler(NullHandler())
 ################################################################################
 # Helpers
 
-
 def get_rendering_environment():
     '''
     '''
     pkg = TEMPLATE_PACKAGE.split('.')
-    env = Environment(
+    env = jinja2.Environment(
         extensions=['jinja2.ext.loopcontrols'],
-        loader=PackageLoader(*pkg),
+        loader=jinja2.PackageLoader(*pkg),
     )
     env.filters['capitalize'] = capitalize
     env.filters['remove_namespace'] = remove_namespace
     env.filters['url_template'] = url_template
     env.filters['use'] = use
     env.globals['keywords'] = keyword.kwlist
-    env.globals['resolve_import'] = resolve_import
-    env.globals['schema_name'] = schema_name
     return env
 
 
-def resolve_import(xsdimport, known_namespaces):
-    '''
-    '''
-    logger.info('Generating code for XSD import \'%s\'...' % xsdimport.schemaLocation)
-    xml = open_document(xsdimport.schemaLocation)
-    xmlelement = etree.fromstring(xml)
-    return generate_code_from_xsd(xmlelement, known_namespaces, xsdimport.schemaLocation)
+def simple_type_depends_on(st):
+    if st.restriction:
+        yield st.restriction.base
 
 
-def schema_name(namespace):
-    '''
-    '''
-    return hashlib.sha512(namespace).hexdigest()[0:5]
+def complex_type_depends_on(ct):
+    content = ct
+    if ct.complexContent:
+        if ct.complexContent.restriction:
+            content = ct.complexContent.restriction
+        else:
+            content = ct.complexContent.extension
+        yield content.base
+    for attribute in content.attributes:
+        if attribute.ref:
+            yield attribute.ref
+        else:
+            yield attribute.type
+    for attrGroupRef in content.attributeGroups:
+        yield attrGroupRef.ref
+    if content.sequence:
+        elements = content.sequence.elements
+    elif content.all:
+        elements = content.all.elements
+    elif content.choice:
+        elements = content.choice.elements
+    else:
+        elements = ()
+    for element in elements:
+        if element.type:
+            yield element.type
+        if element.simpleType:
+            yield element.simpleType.restriction.base
+        if element.ref:
+            yield element.ref
 
 
-def generate_code_from_xsd(xmlelement, known_namespaces=None, location=None):
-    '''
-    '''
-    if known_namespaces is None:
-        known_namespaces = []
-
-    schema = Schema.parse_xmlelement(xmlelement)
-
-    # Skip if this schema has already been included:
-    if schema.targetNamespace in known_namespaces:
-        return ''
-
-    return schema_to_py(schema, known_namespaces, location)
+def group_depends_on(g):
+    for element in g.sequence.elements:
+        if element.ref:
+            yield element.ref
+        yield element.type
 
 
-def schema_to_py(schema, known_namespaces=None, location=None):
-    '''
-    '''
-    if known_namespaces is None:
-        known_namespaces = []
-    known_namespaces.append(schema.targetNamespace)
+def attribute_group_depends_on(g):
+    for attribute in g.attributes:
+        yield attribute.type
 
-    env = get_rendering_environment()
-    env.filters['type'] = get_get_type(NAMESPACES)
-    env.globals['known_namespaces'] = known_namespaces
-    env.globals['location'] = location
 
-    tpl = env.get_template('xsd')
-    return tpl.render(schema=schema)
+def element_depends_on(element):
+    if element.complexType:
+        for dep in complex_type_depends_on(element.complexType):
+            yield dep
+
+
+class XSDLoader(object):
+
+    def __init__(self, loader=None):
+        self.known_namespaces = set()
+        self.load = loader or open_document
+
+    def from_location(self, location):
+        logger.info('Loading XSD Document from %r...', location)
+        return self.from_string(self.load(location))
+
+    def from_string(self, xml):
+        xmlelement = lxml.etree.fromstring(xml)
+        schema = Schema.parse_xmlelement(xmlelement)
+        for elt in self.from_schema(schema):
+            yield elt
+
+    def from_schema(self, schema):
+        if schema.targetNamespace in self.known_namespaces:
+            return
+        self.known_namespaces.add(schema.targetNamespace)
+        for xsdimport in schema.imports:
+            for elt in self.from_location(xsdimport.schemaLocation):
+                yield elt
+        yield schema
+
+
+class XSDRenderer(object):
+
+    def __init__(self, schemas):
+        self.schemas = {schema.targetNamespace: schema for schema in schemas}
+        self.objects = {}
+        self.dependencies = {}
+        self.references = set()
+        self.modules = []
+        self.rendered = []
+
+    def load(self):
+        for schema in self.schemas.values():
+            for group, depends_on, tag in (
+                (schema.simpleTypes, simple_type_depends_on, 'simple'),
+                (schema.groups, group_depends_on, 'group'),
+                (schema.attributeGroups, attribute_group_depends_on, 'attribute_group'),
+                (schema.complexTypes, complex_type_depends_on, 'complex'),
+                (schema.elements, element_depends_on, 'element'),
+                ):
+                for element in group:
+                    qname = (schema.targetNamespace, element.name)
+                    if qname in self.objects:
+                        if tag == 'element':
+                            continue
+                        raise ValueError('Duplicate type definition', qname, tag, self.objects[qname][1])
+                    self.objects[qname] = (element, tag)
+                    dep = set(filter(notbuiltin, map(split_qname, depends_on(element))))
+                    if qname in dep:
+                        self.references.add(qname)
+                        dep.discard(qname)
+                    self.dependencies[qname] = dep
+
+    def sort(self):
+        elements = list(toposort(self.dependencies))
+        if self.dependencies:
+            raise ValueError('Unresolved dependencies', self.dependencies)
+
+        seen = set()
+        for namespace, elementset in itertools.groupby(reversed(elements),
+            key=operator.itemgetter(0)):
+            schema = None
+            if namespace not in seen:
+                schema = self.schemas[namespace]
+            self.modules.append((schema, namespace, reversed(list(elementset))))
+            seen.add(namespace)
+        self.modules.reverse()
+        for namespace in set(self.schemas) - seen:
+            self.modules.append((self.schemas[namespace], namespace, []))
+        seen = set()
+        for schema, namespace, elementset in self.modules:
+            if schema is None:
+                continue
+            for imp in schema.imports[:]:
+                if imp.namespace not in seen:
+                    schema.imports.remove(imp)
+            seen.add(schema.targetNamespace)
+
+    def render(self):
+        for schema, namespace, elements in self.modules:
+            elements = [self.objects[qname] for qname in elements]
+            named = Named(NAMESPACES, self.references)
+
+            env = get_rendering_environment()
+            env.filters['type'] = named.type
+            env.filters['typeref'] = named.type
+            env.globals['schema_name'] = named.schema
+            env.globals['render_complex_type'] = functools.partial(self.render_complex_type, env)
+            tpl = env.get_template('xsd')
+            self.rendered.append(tpl.render(schema=schema, namespace=namespace, xsd_elements=elements))
+
+    @staticmethod
+    def render_complex_type(env, ct, name):
+        tpl = env.get_template('xsd-complex-type')
+        return tpl.render(ct=ct, name=name)
+
+    def __call__(self, preamble=True):
+        self.load()
+        self.sort()
+        if preamble:
+            self.rendered.append(TEMPLATE_PREAMBLE)
+        self.render()
+        return ''.join(self.rendered)
+
+
+def from_string(xml, loader=None):
+    schemas = XSDLoader(loader).from_string(xml)
+    return XSDRenderer(schemas)()
+
+
+def from_location(location, loader=None):
+    schemas = XSDLoader(loader).from_location(location)
+    return XSDRenderer(schemas)()
 
 
 ################################################################################
@@ -131,26 +270,25 @@ def parse_arguments():
             Generates Python code from an XSD document.
         '''))
     parser.add_argument('xsd', help='The path to an XSD document.')
+    parser.add_argument('-l', '--loader',
+        help='Dotted name of a callable that retrieves the source documents.')
     return parser.parse_args()
 
 
 def main():
     '''
     '''
+    logging.basicConfig(level=logging.INFO)
     opt = parse_arguments()
-
-    logger.info('Generating code for XSD document \'%s\'...' % opt.xsd)
-    xml = open_document(opt.xsd)
-    xmlelement = etree.fromstring(xml)
-    print textwrap.dedent('''\
-    from soapbox import xsd
-    from soapbox.xsd import UNBOUNDED
-    ''')
-    print generate_code_from_xsd(xmlelement)
+    loader = None
+    if opt.loader:
+        logger.info('Using document loader %r', opt.loader)
+        loader = zope.dottedname.resolve.resolve(opt.loader)
+    logger.info('Generating code for XSD document %r...', opt.xsd)
+    print from_location(opt.xsd, loader)
 
 
 if __name__ == '__main__':
-
     main()
 
 

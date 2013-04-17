@@ -8,6 +8,7 @@
 # Imports
 
 
+import hashlib
 import httplib2
 import logging
 import os
@@ -149,6 +150,65 @@ def split_qname(qname):
     if not sep:
         return None, qname
     return ns.lstrip('{'), name
+
+
+def notbuiltin(qname):
+    ns, name = qname
+    return NAMESPACES.get(ns) != 'xsd'
+
+
+def schema_name(namespace):
+    '''
+    '''
+    return hashlib.sha512(namespace).hexdigest()[0:5]
+
+
+def toposort(index):
+    while True:
+        free = set(index) - set(elt for elt, dep in index.iteritems() if dep)
+        if not free:
+            break
+        for elt in sorted(free):
+            yield elt
+            index.pop(elt)
+        for dep in index.itervalues():
+            dep.difference_update(free)
+
+
+class dict2object(object):
+    
+    def __init__(self, d):
+        self._d = d
+
+    def __getattr__(self, name):
+        return self._d[name]
+
+
+class Named(object):
+
+    def __init__(self, external_namespaces=None, references=None):
+        self.external_namespaces = external_namespaces or NAMESPACES
+        self.references = references or ()
+
+    def schema(self, namespace):
+        name = 'Schema_' + schema_name(namespace)
+        if namespace not in self.external_namespaces:
+            return name
+        module = self.external_namespaces[namespace]
+        return '{}.{}'.format(module, name)
+
+    def type(self, qname):
+        qname = split_qname(qname)
+        namespace, name = qname
+        name = capitalize(name)
+        if namespace not in self.external_namespaces and qname not in self.references:
+            return '_.' + name
+        module = self.external_namespaces.get(namespace)
+        if module:
+            name = '{}.{}'.format(module, name)
+        if qname in self.references:
+            return repr(name)
+        return name
 
 
 ################################################################################

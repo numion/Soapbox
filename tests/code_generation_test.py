@@ -1,7 +1,7 @@
 import lxml.etree
 import unittest
-from soapbox.xsd2py import generate_code_from_xsd
-from soapbox.wsdl2py import generate_code_from_wsdl
+import soapbox.xsd2py
+import soapbox.wsdl2py
 
 
 XSD = """
@@ -255,20 +255,15 @@ class CodeGenerationTest(unittest.TestCase):
             if c.__name__ not in ('Binding', 'Definitions')]
 
     def test_code_generation_from_xsd(self):
-        xmlelement = lxml.etree.fromstring(XSD)
-        preamble = (
-            'from soapbox import xsd\n'
-            'from soapbox.xsd import UNBOUNDED\n'
-        )
-        code = preamble + generate_code_from_xsd(xmlelement)
+        code = soapbox.xsd2py.from_string(XSD)
         exec code in {}
 
     def test_code_generation_from_wsdl_client(self):
-        code = generate_code_from_wsdl(WSDL, 'client').encode('utf-8')
+        code = soapbox.wsdl2py.from_string(WSDL, 'client').encode('utf-8')
         exec code in {}
 
     def test_code_generation_from_wsdl_server(self):
-        code = generate_code_from_wsdl(WSDL, 'server').encode('utf-8')
+        code = soapbox.wsdl2py.from_string(WSDL, 'server').encode('utf-8')
         exec code in {}
 
 if __name__ == "__main__":
