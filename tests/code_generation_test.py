@@ -1,3 +1,4 @@
+import lxml.etree
 import unittest
 from soapbox.xsd2py import generate_code_from_xsd
 from soapbox.wsdl2py import generate_code_from_wsdl
@@ -227,16 +228,28 @@ WSDL = """<?xml version="1.0"?>
 
 class CodeGenerationTest(unittest.TestCase):
 
+    def setUp(self):
+        # remove dynamically created classes referenced by name,
+        # otherwise typechecks will fail
+        from soapbox.xsd import USER_TYPE_REGISTER
+        USER_TYPE_REGISTER.types[:] = [c for c in USER_TYPE_REGISTER.types
+            if c.__name__ not in ('Binding', 'Definitions')]
+
     def test_code_generation_from_xsd(self):
-        code = generate_code_from_xsd(XSD)
+        xmlelement = lxml.etree.fromstring(XSD)
+        preamble = (
+            'from soapbox import xsd\n'
+            'from soapbox.xsd import UNBOUNDED\n'
+        )
+        code = preamble + generate_code_from_xsd(xmlelement)
         exec code in {}
 
     def test_code_generation_from_wsdl_client(self):
-        code = generate_code_from_wsdl(False, WSDL)
+        code = generate_code_from_wsdl(WSDL, 'client').encode('utf-8')
         exec code in {}
 
     def test_code_generation_from_wsdl_server(self):
-        code = generate_code_from_wsdl(True, WSDL)
+        code = generate_code_from_wsdl(WSDL, 'server').encode('utf-8')
         exec code in {}
 
 if __name__ == "__main__":
