@@ -560,14 +560,15 @@ class XSD_Spec_Test(unittest.TestCase):
         code_type_element = airport.sequence.elements[0]
         code_element = airport.sequence.elements[1]
         self.assertEqual("code_type", code_type_element.name)
-        self.assertEqual("xs:string", code_type_element.simpleType.restriction.base)
+        self.assertEqual("{http://www.w3.org/2001/XMLSchema}string", code_type_element.simpleType.restriction.base)
         self.assertEqual(3, len(code_type_element.simpleType.restriction.enumerations))
         self.assertEqual("ICAO", code_type_element.simpleType.restriction.enumerations[0].value)
         self.assertEqual("code", code_element.name)
 
 
 SCHEMA_XML = """
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="http://flightdataservices.com/ops.xsd">
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="http://flightdataservices.com/ops.xsd"
+    xmlns:fds="http://flightdataservices.com/ops.xsd">
     <xs:complexType name="airport">
         <xs:sequence>
             <xs:element name="code_type">
@@ -664,12 +665,12 @@ class SchemaTest(unittest.TestCase):
         self.assertEqual(2, len(schema.elements))
 
         self.assertEqual("ops", schema.elements[0].name)
-        self.assertEqual("fds:ops", schema.elements[0].type)
+        self.assertEqual("{http://flightdataservices.com/ops.xsd}ops", schema.elements[0].type)
 
         ops_type = schema.complexTypes[2]
         self.assertEqual("ops", ops_type.name)
         self.assertEqual("aircraft", ops_type.sequence.elements[0].name)
-        self.assertEqual("xs:string", ops_type.sequence.elements[0].type)
+        self.assertEqual("{http://www.w3.org/2001/XMLSchema}string", ops_type.sequence.elements[0].type)
 
 
 class RequestResponseOperation(xsd.Group):

@@ -29,6 +29,10 @@ except ImportError:
 logger = logging.getLogger('soapbox')
 logger.addHandler(NullHandler())
 
+NAMESPACES = {
+    'http://www.w3.org/2000/10/XMLSchema': 'xsd',
+    'http://www.w3.org/2001/XMLSchema': 'xsd',
+}
 
 ################################################################################
 # File Functions
@@ -63,7 +67,7 @@ def remove_namespace(full_typename):
     '''
     if not full_typename:
         return None
-    return full_typename.split(':')[-1]
+    return split_qname(full_typename)[1]
 
 
 def capitalize(value):
@@ -80,7 +84,7 @@ def uncapitalize(value):
     return value[0].lower() + value[1:]
 
 
-def get_get_type(xsd_namespaces):
+def get_get_type(namespaces):
     '''
     '''
     def get_type(full_typename):
@@ -88,12 +92,9 @@ def get_get_type(xsd_namespaces):
         '''
         if not full_typename:
             return None
-        typename = full_typename.split(':')
-        if len(typename) < 2:
-            typename.insert(0, None)
-        ns, typename = typename
-        if ns in xsd_namespaces:
-            return 'xsd.%s' % capitalize(typename)
+        ns, typename = split_qname(full_typename)
+        if ns in namespaces:
+            return '%s.%s' % (namespaces[ns], capitalize(typename))
         else:
             return '\'%s\'' % capitalize(typename)
     return get_type
@@ -143,18 +144,11 @@ def url_template(url):
 # Other Functions
 
 
-def find_xsd_namespaces(nsmap):
-    '''
-    '''
-    xsd_namespaces = [
-        'http://www.w3.org/2000/10/XMLSchema',
-        'http://www.w3.org/2001/XMLSchema',
-    ]
-    namespaces = []
-    for key, value in nsmap.iteritems():
-        if value in xsd_namespaces:
-            namespaces.append(key)
-    return namespaces
+def split_qname(qname):
+    ns, sep, name = qname.partition('}')
+    if not sep:
+        return None, qname
+    return ns.lstrip('{'), name
 
 
 ################################################################################

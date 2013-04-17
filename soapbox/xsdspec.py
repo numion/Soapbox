@@ -54,7 +54,7 @@ class Restriction(xsd.ComplexType):
     '''
     '''
     NAMESPACE = 'http://www.w3.org/2001/XMLSchema'
-    base = xsd.Attribute(xsd.String)
+    base = xsd.Attribute(xsd.FQName)
     enumerations = xsd.ListElement(Enumeration, 'enumeration')
     pattern = xsd.Element(Pattern)
     minInclusive = xsd.Element(RestrictionValue)
@@ -90,8 +90,8 @@ class Element(xsd.ComplexType):
     '''
     NAMESPACE = 'http://www.w3.org/2001/XMLSchema'
     name = xsd.Attribute(xsd.String, use=xsd.Use.OPTIONAL)
-    type = xsd.Attribute(xsd.String, use=xsd.Use.OPTIONAL)
-    ref = xsd.Attribute(xsd.String, use=xsd.Use.OPTIONAL)
+    type = xsd.Attribute(xsd.FQName, use=xsd.Use.OPTIONAL)
+    ref = xsd.Attribute(xsd.FQName, use=xsd.Use.OPTIONAL)
     minOccurs = xsd.Attribute(xsd.Integer, use=xsd.Use.OPTIONAL)
     maxOccurs = xsd.Attribute(xsd.String, use=xsd.Use.OPTIONAL)
     nillable = xsd.Attribute(xsd.Boolean, use=xsd.Use.OPTIONAL)
@@ -111,8 +111,8 @@ class Attribute(xsd.ComplexType):
     '''
     NAMESPACE = 'http://www.w3.org/2001/XMLSchema'
     name = xsd.Attribute(xsd.String)
-    ref = xsd.Attribute(xsd.String)
-    type = xsd.Attribute(xsd.String)
+    ref = xsd.Attribute(xsd.FQName)
+    type = xsd.Attribute(xsd.FQName)
     use = xsd.Attribute(xsd.String)
 
 
@@ -128,7 +128,7 @@ class AttributeGroupReference(xsd.ComplexType):
     '''
     '''
     NAMESPACE = 'http://www.w3.org/2001/XMLSchema'
-    ref = xsd.Attribute(xsd.String)
+    ref = xsd.Attribute(xsd.FQName)
 
     def to_python(self):
         typename = get_type(self.ref)
@@ -140,7 +140,7 @@ class Extension(xsd.ComplexType):
     '''
     '''
     NAMESPACE = 'http://www.w3.org/2001/XMLSchema'
-    base = xsd.Attribute(xsd.String)
+    base = xsd.Attribute(xsd.FQName)
     sequence = xsd.Element(Sequence)
     attributes = xsd.ListElement(Attribute, 'attribute')
     attributeGroups = xsd.ListElement(AttributeGroupReference, 'attributeGroup')

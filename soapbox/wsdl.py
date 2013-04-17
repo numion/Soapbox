@@ -64,8 +64,8 @@ def get_wsdl_classes(soap_namespace):
         '''
         '''
         name = xsd.Attribute(xsd.String)
-        element = xsd.Attribute(xsd.String, use=xsd.Use.OPTIONAL)
-        type = xsd.Attribute(xsd.String, use=xsd.Use.OPTIONAL)
+        element = xsd.Attribute(xsd.FQName, use=xsd.Use.OPTIONAL)
+        type = xsd.Attribute(xsd.FQName, use=xsd.Use.OPTIONAL)
 
     class Message(xsd.ComplexType):
         '''

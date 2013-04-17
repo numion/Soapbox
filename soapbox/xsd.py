@@ -207,6 +207,11 @@ class SimpleType(Type):
         '''
         return self.pythonvalue(xmlelement.text)
 
+    def parse_xmlattribute(self, xmlelement, name, default=None):
+        '''
+        '''
+        return self.pythonvalue(xmlelement.get(name, default))
+
     def xmlvalue(self, value):
         '''
         '''
@@ -687,10 +692,7 @@ class Attribute(Element):
         '''
         '''
         self._evaluate_type()
-        xmlvalue = xmlelement.get(field_name)
-        if xmlvalue is None:
-            xmlvalue = self.default
-        value = self._type.pythonvalue(xmlvalue)
+        value = self._type.parse_xmlattribute(xmlelement, field_name, self.default)
         setattr(instance, field_name, value)
 
 
@@ -1125,6 +1127,24 @@ class QName(String):
     '''
     '''
     pass
+
+
+class FQName(String):
+    '''
+    '''
+
+    def parse_xmlattribute(self, xmlelement, name, default):
+        '''
+        '''
+        value = xmlelement.get(name, default)
+        if value is not None and not value.startswith('{'):
+            if ':' in value:
+                ns, name = value.split(':', 1)
+            else:
+                ns = None
+                name = value
+            value = '{%s}%s' % (xmlelement.nsmap[ns], name)
+        return self.pythonvalue(value)
 
 
 class NMTOKEN(String):

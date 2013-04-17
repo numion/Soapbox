@@ -20,8 +20,8 @@ from lxml import etree
 
 from .xsdspec import Schema
 from .utils import (
+    NAMESPACES,
     capitalize,
-    find_xsd_namespaces,
     get_get_type,
     open_document,
     remove_namespace,
@@ -92,7 +92,6 @@ def generate_code_from_xsd(xmlelement, known_namespaces=None, location=None):
     '''
     if known_namespaces is None:
         known_namespaces = []
-    xsd_namespace = find_xsd_namespaces(xmlelement.nsmap)
 
     schema = Schema.parse_xmlelement(xmlelement)
 
@@ -100,10 +99,10 @@ def generate_code_from_xsd(xmlelement, known_namespaces=None, location=None):
     if schema.targetNamespace in known_namespaces:
         return ''
 
-    return schema_to_py(schema, xsd_namespace, known_namespaces, location)
+    return schema_to_py(schema, known_namespaces, location)
 
 
-def schema_to_py(schema, xsd_namespace, known_namespaces=None, location=None):
+def schema_to_py(schema, known_namespaces=None, location=None):
     '''
     '''
     if known_namespaces is None:
@@ -111,7 +110,7 @@ def schema_to_py(schema, xsd_namespace, known_namespaces=None, location=None):
     known_namespaces.append(schema.targetNamespace)
 
     env = get_rendering_environment()
-    env.filters['type'] = get_get_type(xsd_namespace)
+    env.filters['type'] = get_get_type(NAMESPACES)
     env.globals['known_namespaces'] = known_namespaces
     env.globals['location'] = location
 
