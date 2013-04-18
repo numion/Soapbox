@@ -47,7 +47,6 @@ except ImportError:
 TEMPLATE_PACKAGE = 'soapbox.templates'
 TEMPLATE_PREAMBLE = """\
 from soapbox import xsd
-from soapbox.xsd import UNBOUNDED
 from soapbox.utils import dict2object
 
 _ = dict2object(globals())
@@ -106,8 +105,8 @@ def complex_type_depends_on(ct):
         elements = content.sequence.elements
     elif content.all:
         elements = content.all.elements
-    elif content.choice:
-        elements = content.choice.elements
+    #~ elif content.choice:
+        #~ elements = content.choice.elements
     else:
         elements = ()
     for element in elements:

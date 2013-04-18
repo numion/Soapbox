@@ -60,9 +60,6 @@ from . import iso8601, settings
 
 NIL = object()
 
-UNBOUNDED = 'unbounded'
-
-
 ################################################################################
 # Classes
 
@@ -485,6 +482,8 @@ class Integer(Decimal):
         elif isinstance(value, int) or isinstance(value, long):
             pass  # value is just value continue.
         elif isinstance(value, basestring):
+            if value.lower() == 'unbounded':
+                return None
             value = int(value)
         else:
             raise ValueError("Incorrect value '%s' for Decimal field." % value)
@@ -814,7 +813,7 @@ class ListElement(Element):
                         raise ValueError("Nil value in not nillable list.")
                 else:
                     accepted_value = this._type.accept(value)
-                if this._maxOccurs is not None and this._maxOccurs != UNBOUNDED:
+                if this._maxOccurs is not None:
                     if (len(self) + 1) > this._maxOccurs:
                         raise ValueError("Number of items in list %s is would be bigger than maxOccurs %s" % (len(self), this._maxOccurs))
                 super(TypedList, self).append(accepted_value)
@@ -1279,6 +1278,8 @@ class Schema(object):
 
         for element in self.elements.values():
             element._evaluate_type()
+            if isinstance(element._type, ComplexType):
+                element._type._force_elements_type_evalution()
 
     def __init_schema(self, types):
         '''
