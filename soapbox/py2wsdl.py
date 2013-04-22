@@ -65,7 +65,7 @@ def build_bindings(wsdl, definitions, service):
     binding.binding.style = 'document'
     binding.binding.transport = SOAP_HTTP_Transport
 
-    for method in service.methods:
+    for method in service.methods.values():
         operation = wsdl.Operation()
         operation.name = method.operationName
         operation.operation = wsdl.SOAP_Operation()
@@ -84,7 +84,7 @@ def build_portTypes(wsdl, definitions, service):
     portType = wsdl.PortType()
     portType.name = service.name + 'PortType'
 
-    for method in service.methods:
+    for method in service.methods.values():
         operation = wsdl.Operation()
         operation.name = method.operationName
         operation.input = wsdl.Input(message='tns:' + method.operationName + 'Input')
@@ -97,23 +97,23 @@ def build_portTypes(wsdl, definitions, service):
 def build_messages(wsdl, definitions, service):
     '''
     '''
-    for method in service.methods:
+    for method in service.methods.values():
         inputMessage = wsdl.Message(name=method.operationName + 'Input')
-        inputMessage.part = wsdl.Part()
-        inputMessage.part.name = 'body'
+        part = wsdl.Part(name='body')
         if isinstance(method.input, basestring):
-            inputMessage.part.element = 'sns:' + method.input
+            part.element = 'sns:' + method.input
         else:
-            inputMessage.part.type = 'sns:' + uncapitalize(method.input.__name__)
+            part.type = 'sns:' + uncapitalize(method.input.__name__)
+        inputMessage.parts = [part]
         definitions.messages.append(inputMessage)
 
         outputMessage = wsdl.Message(name=method.operationName + 'Output')
-        outputMessage.part = wsdl.Part()
-        outputMessage.part.name = 'body'
+        part = wsdl.Part(name='body')
         if isinstance(method.output, basestring):
-            outputMessage.part.element = 'sns:' + method.output
+            part.element = 'sns:' + method.output
         else:
-            outputMessage.part.type = 'sns:' + uncapitalize(method.output.__name__)
+            part.type = 'sns:' + uncapitalize(method.output.__name__)
+        outputMessage.parts = [part]
         definitions.messages.append(outputMessage)
 
 
@@ -146,13 +146,14 @@ def generate_wsdl(service):
         },
     )
 
-    definitions.render(xmlelement,
-                       definitions,
-                       namespace='http://schemas.xmlsoap.org/wsdl/',
-                       elementFormDefault=xsd.ElementFormDefault.QUALIFIED)
-
+    definitions.render(xmlelement, definitions)
     return xmlelement
 
+
+def tostring(service):
+    tree = generate_wsdl(service)
+    return etree.tostring(tree, pretty_print=True)
+    
 
 ################################################################################
 # Program
@@ -178,8 +179,7 @@ def main():
     logger.info('Generating WSDL for module \'%s\'...' % opt.module)
     module = imp.load_source('', opt.module)
     service = getattr(module, 'SERVICE')
-    tree = generate_wsdl(service)
-    print etree.tostring(tree, pretty_print=True)
+    print tostring(service)
 
 
 if __name__ == '__main__':

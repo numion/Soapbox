@@ -25,6 +25,7 @@ def get_by_name(_list, fullname):
     raise ValueError("Item '%s' not found in list:%s" % (name, _list))
 
 
+@xsd.localregistry
 def get_wsdl_classes(soap_namespace):
     '''
     '''
@@ -32,33 +33,45 @@ def get_wsdl_classes(soap_namespace):
     class SOAP_Binding(xsd.ComplexType):
         '''
         '''
-        ELEMENT_FORM_DEFAULT = xsd.ElementFormDefault.QUALIFIED
         style = xsd.Attribute(xsd.String)
         transport = xsd.Attribute(xsd.String)
 
     class SOAP_Operation(xsd.ComplexType):
         '''
         '''
-        ELEMENT_FORM_DEFAULT = xsd.ElementFormDefault.QUALIFIED
         soapAction = xsd.Attribute(xsd.String)
         style = xsd.Attribute(xsd.String, use=xsd.Use.OPTIONAL)
+
+    class SOAP_Header(xsd.ComplexType):
+        '''
+        '''
+        message = xsd.Attribute(xsd.String)
+        part = xsd.Attribute(xsd.String)
+        use = xsd.Attribute(xsd.String)
 
     class SOAP_Body(xsd.ComplexType):
         '''
         '''
-        ELEMENT_FORM_DEFAULT = xsd.ElementFormDefault.QUALIFIED
         use = xsd.Attribute(xsd.String)
 
     class SOAP_Address(xsd.ComplexType):
         '''
         '''
-        ELEMENT_FORM_DEFAULT = xsd.ElementFormDefault.QUALIFIED
         location = xsd.Attribute(xsd.String)
+
+    SOAP = xsd.Schema(
+        targetNamespace=soap_namespace,
+        elementFormDefault=xsd.ElementFormDefault.QUALIFIED,
+        simpleTypes=[],
+        attributeGroups=[],
+        groups=[],
+        complexTypes=[SOAP_Binding, SOAP_Operation, SOAP_Header, SOAP_Body, SOAP_Address],
+        elements={})
 
     class Types(xsd.ComplexType):
         '''
         '''
-        schema = xsd.Element(xsdspec.Schema, namespace=xsdspec.XSD_NAMESPACE)
+        schema = xsdspec.SCHEMA.Element(xsdspec.Schema)
 
     class Part(xsd.ComplexType):
         '''
@@ -71,22 +84,29 @@ def get_wsdl_classes(soap_namespace):
         '''
         '''
         name = xsd.Attribute(xsd.String)
-        part = xsd.Element(Part)
+        parts = xsd.ListElement(Part, 'part', minOccurs=1)
+
+        @property
+        def part(self):
+            if len(self.parts) != 1:
+                raise ValueError('expected exactly one part', self.name, self.parts)
+            return self.parts[0]
 
     class Input(xsd.ComplexType):
         '''
         '''
         message = xsd.Attribute(xsd.String, use=xsd.Use.OPTIONAL)
-        body = xsd.Element(SOAP_Body, namespace=soap_namespace, minOccurs=0)
+        headers = SOAP.ListElement(SOAP_Header, 'header', minOccurs=0)
+        body = SOAP.Element(SOAP_Body, minOccurs=0)
 
     class Operation(xsd.ComplexType):
         '''
         '''
-        operation = xsd.Element(SOAP_Operation, namespace=soap_namespace)
+        operation = SOAP.Element(SOAP_Operation)
         name = xsd.Attribute(xsd.String)
         input = xsd.Element(Input)
         output = xsd.Element(Input)
-        body = xsd.Element(SOAP_Body, namespace=soap_namespace)
+        body = SOAP.Element(SOAP_Body)
         binding = xsd.Element('Binding')
         definition = xsd.Element('Definitions')
 
@@ -122,6 +142,12 @@ def get_wsdl_classes(soap_namespace):
             messageName = portTypeOperation.input.message
             return get_by_name(self.definition.messages, messageName)
 
+        def get_InputMessageHeaders(self):
+            '''
+            '''
+            operation = get_by_name(self.binding.operations, self.name)
+            return self._get_parts(operation.input.headers)
+
         def get_OutputMessage(self):
             '''
             '''
@@ -129,6 +155,19 @@ def get_wsdl_classes(soap_namespace):
             portTypeOperation = get_by_name(portType.operations, self.name)
             messageName = portTypeOperation.output.message
             return get_by_name(self.definition.messages, messageName)
+
+        def get_OutputMessageHeaders(self):
+            '''
+            '''
+            operation = get_by_name(self.binding.operations, self.name)
+            return self._get_parts(operation.output.headers)
+        
+        def _get_parts(self, references):
+            parts = []
+            for ref in references:
+                message = get_by_name(self.definition.messages, ref.message)
+                parts.append(get_by_name(message.parts, ref.part))
+            return parts
 
     class PortType(xsd.ComplexType):
         '''
@@ -141,7 +180,7 @@ def get_wsdl_classes(soap_namespace):
         '''
         name = xsd.Attribute(xsd.String)
         type = xsd.Attribute(xsd.String)
-        binding = xsd.Element(SOAP_Binding, namespace=soap_namespace)
+        binding = SOAP.Element(SOAP_Binding)
         operations = xsd.ListElement(Operation, 'operation')
         definition = xsd.Element('Definitions')
 
@@ -178,7 +217,7 @@ def get_wsdl_classes(soap_namespace):
         '''
         name = xsd.Attribute(xsd.String)
         binding = xsd.Attribute(xsd.String)
-        address = xsd.Element(SOAP_Address, namespace=soap_namespace)
+        address = SOAP.Element(SOAP_Address)
 
     class Service(xsd.ComplexType):
         '''
@@ -203,6 +242,7 @@ def get_wsdl_classes(soap_namespace):
         bindings = xsd.ListElement(Binding, 'binding')
         services = xsd.ListElement(Service, 'service')
         imports = xsd.ListElement(Import, 'import')
+
 
     SCHEMA = xsd.Schema(
         targetNamespace='http://schemas.xmlsoap.org/wsdl/',
@@ -231,6 +271,7 @@ def get_wsdl_classes(soap_namespace):
             self.PortType = PortType
             self.SOAP_Address = SOAP_Address
             self.SOAP_Binding = SOAP_Binding
+            self.SOAP_Header = SOAP_Header
             self.SOAP_Body = SOAP_Body
             self.SOAP_Operation = SOAP_Operation
             self.Service = Service

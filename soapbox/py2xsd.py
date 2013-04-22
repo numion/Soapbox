@@ -228,10 +228,7 @@ def generate_xsd(schema):
         },
     )
 
-    xsd_schema.render(xmlelement,
-                      xsd_schema,
-                      namespace=xsdspec.XSD_NAMESPACE,
-                      elementFormDefault=xsd.ElementFormDefault.QUALIFIED)
+    xsd_schema.render(xmlelement, xsd_schema)
     return xmlelement
 
 

@@ -130,6 +130,7 @@ class Stub(object):
                 'scheme': self.SCHEME,
                 'host': self.HOST,
             }
+        self.header = None
 
     def _handle_response(self, method, response, content):
         '''
@@ -143,18 +144,17 @@ class Stub(object):
             logger.error(error)
             raise SOAPError(error)
 
-        message = envelope.Body.content()
+        self.response_header = None
+        if envelope.Header and method.outputHeader:
+            self.response_header = envelope.Header.parse_as(method.outputHeader)
 
         if isinstance(method.output, basestring):
             element = self.SERVICE.schema.get_element_by_name(method.output)
-            _type = element._type
+            _type = element._type.__class__
         else:
             _type = method.output
 
-        if self.SERVICE.schema:
-            return _type.parsexml(message, self.SERVICE.schema)
-        else:
-            return _type.parsexml(message)
+        return envelope.Body.parse_as(_type)
 
     def call(self, operationName, **kw):
         '''
@@ -162,19 +162,17 @@ class Stub(object):
         '''
         SOAP = self.SERVICE.version
         method = self.SERVICE.get_method(operationName)
-        schema = self.SERVICE.schema
-        
+
         if isinstance(method.input, basestring):
-            tagname = method.input
-            element = schema.get_element_by_name(method.input)
+            element = self.SERVICE.schema.get_element_by_name(method.input)
             _type = element._type.__class__
         else:
-            raise ValueError(method.input)
-            
+            _type = method.input
+
+        header = self.header
+        if isinstance(header, dict) and method.inputHeader:
+            header = method.inputHeader(**header)
         parameter = _type(**kw)
-        parameter.xml(tagname, schema=schema,
-            namespace=parameter.SCHEMA.targetNamespace,
-            elementFormDefault=parameter.SCHEMA.elementFormDefault)
 
         disable_validation = not os.path.exists(settings.CA_CERTIFICATE_FILE)
         http = httplib2.Http(
@@ -186,7 +184,7 @@ class Stub(object):
             http.add_credentials(self.username, self.password)
 
         headers = SOAP.build_header(method.soapAction)
-        envelope = SOAP.Envelope.response(tagname, parameter)
+        envelope = SOAP.Envelope.response(operationName, parameter, header)
 
         logger.info('Request \'%s\'...' % self.location)
         logger.debug('Request Headers:\n\n%s\n' % headers)
@@ -234,7 +232,6 @@ def get_django_dispatch(service):
             try:
                 tagname = uncapitalize(return_object.__class__.__name__)
                 return_object.xml(tagname, namespace=service.schema.targetNamespace,
-                                  elementFormDefault=service.schema.elementFormDefault,
                                   schema=service.schema)  # Validation.
             except Exception, e:
                 raise ValueError(e)

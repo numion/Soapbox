@@ -44,7 +44,7 @@ For information on XML schema validation:
 ################################################################################
 # Imports
 
-
+import functools
 import re
 
 from copy import copy
@@ -96,6 +96,16 @@ class TypeRegister(object):
 
 
 USER_TYPE_REGISTER = TypeRegister()
+
+
+def localregistry(f):
+    n = len(USER_TYPE_REGISTER.types)
+    def invoke(*args, **kw):
+        try:
+            return f(*args, **kw)
+        finally:
+            del USER_TYPE_REGISTER.types[n:]
+    return invoke
 
 
 class CallStyle(object):
@@ -200,7 +210,7 @@ class SimpleType(Type):
     Defines an interface for simple types.
     '''
 
-    def render(self, parent, value, namespace, elementFormDefault):
+    def render(self, parent, value, namespace=None):
         '''
         '''
         parent.text = self.xmlvalue(value)
@@ -553,6 +563,7 @@ class Element(object):
         self.tagname = tagname
         self.default = default
         self.nillable = nillable
+        # local element iff namespace is None
         self.namespace = namespace
 
     def _evaluate_type(self):
@@ -565,6 +576,14 @@ class Element(object):
                 self._type = self._passed_type
             else:
                 self._type = self._passed_type()
+
+    def get_tagname(self, field_name, namespace=None):
+        tagname = self.tagname or field_name
+        if self.namespace:
+            namespace = self.namespace
+        if namespace:
+            tagname = '{%s}%s' % (namespace, tagname)
+        return tagname
 
     def empty_value(self):
         '''
@@ -587,42 +606,41 @@ class Element(object):
         else:
             return self._type.accept(value)
 
-    def render(self, parent, field_name, value, namespace=None, elementFormDefault=None):
+    def render(self, parent, field_name, value, namespace=None):
         '''
         '''
         self._evaluate_type()
         if value is None:
             return
+        tagname = self.get_tagname(field_name, namespace)
+        self._render_element(parent, tagname, value)
 
-        if self.namespace is not None:
-            namespace = self.namespace
-        if namespace is not None and elementFormDefault == ElementFormDefault.QUALIFIED:
-            field_name = '{%s}%s' % (namespace, field_name)
-
-        xmlelement = etree.Element(field_name)
+    def _render_element(self, parent, tagname, value):
+        xmlelement = etree.Element(tagname)
         if value == NIL:
             xmlelement.set('{http://www.w3.org/2001/XMLSchema-instance}nil', 'true')
         else:
-            self._type.render(xmlelement, value, namespace, elementFormDefault)
+            self._type.render(xmlelement, value)
         parent.append(xmlelement)
 
-    def parse(self, instance, field_name, xmlelement):
+    def parse(self, instance, field_name, xmlelement, namespace=None):
         '''
         '''
         self._evaluate_type()
+        tagname = self.get_tagname(field_name, namespace)
+        subelement = xmlelement.find(tagname)
+        if subelement is not None:
+            setattr(instance, field_name, self._parse_element(subelement))
+
+    def _parse_element(self, xmlelement):
         if xmlelement.get('{http://www.w3.org/2001/XMLSchema-instance}nil') == 'true':
-            value = NIL
-        else:
-            value = self._type.parse_xmlelement(xmlelement)
-        setattr(instance, field_name, value)
+            return NIL
+        return self._type.parse_xmlelement(xmlelement)
 
     def __repr__(self):
         '''
         '''
-        if isinstance(self._type, basestring):
-            return '%s<%s>' % (self.__class__.__name__, self._type)
-        else:
-            return '%s<%s>' % (self.__class__.__name__, self._type.__class__.__name__)
+        return '%s<%s>' % (self.__class__.__name__, self._type.__class__.__name__)
 
     def __get__(self, instance, cls):
         if instance is None:
@@ -649,24 +667,13 @@ class ClassNamedElement(Element):
         '''
         super(ClassNamedElement, self).__init__(_type, minOccurs, None, nilable)
 
-    def render(self, parent, field_name, value, namespace=None, elementFormDefault=None):
+    def render(self, parent, field_name, value, namespace=None):
         '''
         '''
         if value is None:
             return
-        tagname = value.name
-        value = value.value
-        if value is None:
-            return
-
-        namespace = value.SCHEMA.targetNamespace
-        if namespace:
-            tagname = '{%s}%s' % (namespace, tagname)
-
-        xmlelement = etree.Element(tagname)
-        self._type.render(xmlelement, value, namespace=namespace,
-                          elementFormDefault=value.SCHEMA.elementFormDefault)
-        parent.append(xmlelement)
+        super(ClassNamedElement, self).render(parent, value.name, value.value,
+            namespace=value.value.SCHEMA.targetNamespace)
 
 
 class Attribute(Element):
@@ -688,7 +695,7 @@ class Attribute(Element):
         self.use = use
         self.default = default
 
-    def render(self, parent, field_name, value, namespace=None, elementFormDefault=None):
+    def render(self, parent, field_name, value, namespace=None):
         '''
         '''
         self._evaluate_type()
@@ -744,7 +751,7 @@ class Ref(Element):
         self._evaluate_type()
         return copy(self._type)
 
-    def render(self, parent, field_name, value, namespace=None, elementFormDefault=None):
+    def render(self, parent, field_name, value, namespace=None):
         '''
         '''
         if value is None:
@@ -752,7 +759,12 @@ class Ref(Element):
                 raise ValueError('Value None is not acceptable for required field.')
             else:
                 return
-        self._type.render(parent, value, namespace, elementFormDefault)
+        self._type.render(parent, value, namespace)
+
+    def parse(self, instance, field_name, xmlelement, namespace=None):
+        self._evaluate_type()
+        value = self._type.__class__.parse_xmlelement(xmlelement)
+        setattr(instance, field_name, value)
 
 
 class Content(Ref):
@@ -783,10 +795,12 @@ class ListElement(Element):
     be in plural form, and tag usually is not.
     '''
 
-    def __init__(self, clazz, tagname, minOccurs=None, maxOccurs=None, nillable=False):
+    def __init__(self, clazz, tagname, minOccurs=None, maxOccurs=None, 
+                 nillable=False, namespace=None):
         '''
         '''
-        super(ListElement, self).__init__(clazz, tagname=tagname, nillable=nillable)
+        super(ListElement, self).__init__(
+            clazz, tagname=tagname, nillable=nillable, namespace=namespace)
         self._maxOccurs = maxOccurs
         self._minOccurs = minOccurs
 
@@ -820,7 +834,7 @@ class ListElement(Element):
 
         return TypedList()
 
-    def render(self, parent, field_name, value, namespace=None, elementFormDefault=None):
+    def render(self, parent, field_name, value, namespace=None):
         '''
         '''
         self._evaluate_type()
@@ -830,31 +844,18 @@ class ListElement(Element):
         if self._maxOccurs and len(items) > self._maxOccurs:
             raise ValueError('For %s maxOccurs=%d but list length %d.' % (field_name, self._maxOccurs))
 
-        if self.namespace is not None:
-            namespace = self.namespace
-        if namespace is not None and elementFormDefault == ElementFormDefault.QUALIFIED:
-            tagname = '{%s}%s' % (namespace, self.tagname)
-        else:
-            tagname = self.tagname
-
+        tagname = self.get_tagname(field_name, namespace)
         for item in items:
-            xmlelement = etree.Element(tagname)
-            if item == NIL:
-                xmlelement.set('{http://www.w3.org/2001/XMLSchema-instance}nil', 'true')
-            else:
-                self._type.render(xmlelement, item, namespace, elementFormDefault)
-            parent.append(xmlelement)
+            self._render_element(parent, tagname, item)
 
-    def parse(self, instance, field_name, xmlelement):
+    def parse(self, instance, field_name, xmlelement, namespace=None):
         '''
         '''
         self._evaluate_type()
-        if xmlelement.get('{http://www.w3.org/2001/XMLSchema-instance}nil'):
-            value = NIL
-        else:
-            value = self._type.parse_xmlelement(xmlelement)
-        _list = getattr(instance, field_name)
-        _list.append(value)
+        values = getattr(instance, field_name)
+        tagname = self.get_tagname(field_name, namespace)
+        for subelement in xmlelement.findall(tagname):
+            values.append(self._parse_element(subelement))
 
 
 class ComplexTypeMetaInfo(object):
@@ -897,8 +898,7 @@ class Complex_PythonType(Type_PythonType):
         '''
         '''
         newcls = super(Complex_PythonType, cls).__new__(cls, name, bases, attrs)
-        if name != 'Complex':
-            newcls._meta = ComplexTypeMetaInfo(newcls)
+        newcls._meta = ComplexTypeMetaInfo(newcls)
         return newcls
 
 
@@ -937,61 +937,25 @@ class ComplexType(Type):
         else:
             raise ValueError('Wrong value object type %s for %s.' % (value, self.__class__.__name__))
 
-    def render(self, parent, instance, namespace=None, elementFormDefault=None):
+    def render(self, parent, instance, namespace=None):
         '''
         '''
         if instance is None:
             return None
-        if self.SCHEMA:
-            namespace = self.SCHEMA.targetNamespace
+
+        schema = instance.SCHEMA
+        if schema and schema.elementFormDefault == ElementFormDefault.QUALIFIED:
+            namespace = schema.targetNamespace
+
         for field in instance._meta.all:
             field.render(
                 parent=parent,
                 field_name=field._name,
                 value=getattr(instance, field._name),
-                namespace=namespace,
-                elementFormDefault=elementFormDefault)
+                namespace=namespace)
 
     @classmethod
-    def _find_field(cls, fields, name):
-        '''
-        '''
-        return filter(lambda f: f._name == name, fields)[0]
-
-    @classmethod
-    def _get_field_by_name(cls, fields, field_name):
-        '''
-        '''
-        for field in fields:
-            if field.tagname == field_name or field._name == field_name:
-                return field
-        raise ValueError("Field not found '%s', fields: %s" % (field_name, fields))
-
-    @classmethod
-    def _find_subelement(cls, field, xmlelement):
-        '''
-        '''
-        def gettagns(tag):
-            '''
-            Translates tag string in format {namespace} tag to tuple
-            (namespace, tag).
-            '''
-            if tag[0] == '{':
-                return tag[1:].split('}', 1)
-            else:
-                return (None, tag)
-
-        subelements = []
-        for subelement in xmlelement:
-            if isinstance(subelement, etree._Comment):
-                continue
-            ns, tag = gettagns(subelement.tag)
-            if tag == field._name or tag == field.tagname:
-                subelements.append(subelement)
-        return subelements
-
-    @classmethod
-    def parse_xmlelement(cls, xmlelement):
+    def parse_xmlelement(cls, xmlelement, namespace=None):
         '''
         '''
         instance = cls()
@@ -999,10 +963,12 @@ class ComplexType(Type):
         for attribute in instance._meta.attributes:
             attribute.parse(instance, attribute._name, xmlelement)
 
+        schema = cls.SCHEMA
+        if schema and schema.elementFormDefault == ElementFormDefault.QUALIFIED:
+            namespace = schema.targetNamespace
+
         for field in instance._meta.fields:
-            subelements = cls._find_subelement(field, xmlelement)
-            for subelement in subelements:
-                field.parse(instance, field._name, subelement)
+            field.parse(instance, field._name, xmlelement, namespace)
 
         for group in instance._meta.groups:
             group.parse(instance, group._name, xmlelement)
@@ -1021,22 +987,22 @@ class ComplexType(Type):
         return xmlelement
 
     @classmethod
-    def parsexml(cls, xml, schema=None):
+    def parsexml(cls, xml, schema=None, namespace=None):
         '''
         '''
         if schema and settings.VALIDATE_ON_PARSE:
             xmlelement = cls.__parse_with_validation(xml, schema)
         else:
             xmlelement = etree.fromstring(xml)
-        return cls.parse_xmlelement(xmlelement)
+        return cls.parse_xmlelement(xmlelement, namespace)
 
-    def xml(self, tagname, namespace=None, elementFormDefault=None, schema=None):
+    def xml(self, tagname, namespace=None, schema=None):
         '''
         '''
         if namespace:
             tagname = '{%s}%s' % (namespace, tagname)
         xmlelement = etree.Element(tagname)
-        self.render(xmlelement, self, namespace, elementFormDefault)
+        self.render(xmlelement, self, namespace)
         xml = etree.tostring(xmlelement, pretty_print=True)
         if schema and settings.VALIDATE_ON_PARSE:
             self.__parse_with_validation(xml, schema)
@@ -1262,6 +1228,8 @@ class Schema(object):
         self.elements = elements
         self.imports = imports
         self.location = location
+        self.Element = functools.partial(Element, namespace=self.targetNamespace)
+        self.ListElement = functools.partial(ListElement, namespace=self.targetNamespace)
 
         self.__init_schema(self.simpleTypes)
         self.__init_schema(self.groups)
@@ -1269,6 +1237,7 @@ class Schema(object):
         self.__init_schema(self.complexTypes)
 
         for element in self.elements.values():
+            element.namespace = self.targetNamespace
             if isinstance(element._passed_type, ComplexType):
                 element._passed_type.__class__.SCHEMA = self
 
@@ -1314,8 +1283,9 @@ class Method(object):
     how and which objects should be created on incoming/outgoing messages.
     '''
 
-    def __init__(self, operationName, soapAction, input, output, function=None,
-                 inputPartName="body", outputPartName="body", style=CallStyle.DOCUMENT):
+    def __init__(self, operationName, soapAction, input=None, output=None, function=None,
+                 inputPartName="body", outputPartName="body",
+                 inputHeader=None, outputHeader=None, style=CallStyle.DOCUMENT):
         '''
         :param function: The function that should be called. Required only for server.
         '''
@@ -1326,6 +1296,8 @@ class Method(object):
         self.function = function
         self.inputPartName = inputPartName
         self.outputPartName = outputPartName
+        self.inputHeader = inputHeader
+        self.outputHeader = outputHeader
         self.style = style
 
 

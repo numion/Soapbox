@@ -1,7 +1,9 @@
 import lxml.etree
 import unittest
-import soapbox.xsd2py
+import soapbox.py2wsdl
+import soapbox.py2xsd
 import soapbox.wsdl2py
+import soapbox.xsd2py
 
 
 XSD = """
@@ -216,7 +218,7 @@ WSDL = """<?xml version="1.0"?>
         <wsdl:part name="body" element="fds:ops"/>
     </wsdl:message>
     <wsdl:message name="PutOpsOutput">
-        <part name="body" element="fds:status"/>
+        <wsdl:part name="body" element="fds:status"/>
     </wsdl:message>
     <wsdl:portType name="PutOpsPortType">
         <wsdl:operation name="PutOps">
@@ -247,24 +249,33 @@ WSDL = """<?xml version="1.0"?>
 
 class CodeGenerationTest(unittest.TestCase):
 
-    def setUp(self):
-        # remove dynamically created classes referenced by name,
-        # otherwise typechecks will fail
-        from soapbox.xsd import USER_TYPE_REGISTER
-        USER_TYPE_REGISTER.types[:] = [c for c in USER_TYPE_REGISTER.types
-            if c.__name__ not in ('Binding', 'Definitions')]
-
     def test_code_generation_from_xsd(self):
         code = soapbox.xsd2py.from_string(XSD)
         exec code in {}
 
     def test_code_generation_from_wsdl_client(self):
         code = soapbox.wsdl2py.from_string(WSDL, 'client').encode('utf-8')
-        exec code in {}
+        m = {}
+        exec code in m
+        self.check_reparse_wsdl(m, 'client')
 
     def test_code_generation_from_wsdl_server(self):
         code = soapbox.wsdl2py.from_string(WSDL, 'server').encode('utf-8')
-        exec code in {}
+        m = {}
+        exec code in m
+        self.check_reparse_wsdl(m, 'server')
+
+    def check_reparse_wsdl(self, base, target):
+        xml = soapbox.py2wsdl.tostring(base['PutOpsPort_SERVICE'])
+        code = soapbox.wsdl2py.from_string(xml, target).encode('utf-8')
+        m = {}
+        exec code in m
+        # XXX too much autonaming magic
+        m['PutOpsPort_SERVICE'] = m.pop('PutOpsPortPort_SERVICE')
+        if target == 'client':
+            m['PutOpsPortServiceStub'] = m.pop('PutOpsPortPortServiceStub')
+        self.assertEqual(sorted(m), sorted(base))
+
 
 if __name__ == "__main__":
     unittest.main()
