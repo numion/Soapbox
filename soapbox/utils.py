@@ -175,6 +175,28 @@ def toposort(index):
             dep.difference_update(free)
 
 
+def cycles(dependencies, k, seen):
+    seen.append(k)
+    for p in tuple(dependencies[k]):
+        if p in seen:
+            yield p
+        else:
+            for pp in cycles(dependencies, p, seen):
+                yield pp
+    seen.pop()
+
+
+def toposort_full(dependencies, references):
+    elements = list(toposort(dependencies))
+    while dependencies:
+        for qname in cycles(dependencies, dependencies.keys()[0], []):
+            references.add(qname)
+            for dep in dependencies.values():
+                dep.discard(qname)
+        elements.extend(toposort(dependencies))
+    return elements
+
+
 class dict2object(object):
     
     def __init__(self, d):

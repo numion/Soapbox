@@ -29,7 +29,7 @@ from .utils import (
     open_document,
     remove_namespace,
     split_qname,
-    toposort,
+    toposort_full,
     url_template,
     use,
 )
@@ -188,16 +188,11 @@ class XSDRenderer(object):
                             continue
                         raise ValueError('Duplicate type definition', qname, tag, self.objects[qname][1])
                     self.objects[qname] = (element, tag)
-                    dep = set(filter(notbuiltin, map(split_qname, depends_on(element))))
-                    if qname in dep:
-                        self.references.add(qname)
-                        dep.discard(qname)
-                    self.dependencies[qname] = dep
+                    self.dependencies[qname] = set(
+                        filter(notbuiltin, map(split_qname, depends_on(element))))
 
     def sort(self):
-        elements = list(toposort(self.dependencies))
-        if self.dependencies:
-            raise ValueError('Unresolved dependencies', self.dependencies)
+        elements = list(toposort_full(self.dependencies, self.references))
 
         seen = set()
         for namespace, elementset in itertools.groupby(reversed(elements),
