@@ -78,7 +78,7 @@ class Header(xsd.ComplexType):
             namespace=ContentType.SCHEMA.targetNamespace)
 
     def render(self, parent, instance, namespace=None):
-        return instance.render(parent, instance,
+        return super(Header, self).render(parent, instance,
             namespace=instance.SCHEMA.targetNamespace)
 
 

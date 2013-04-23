@@ -115,6 +115,10 @@ class SOAP_TBase(object):
         self.assertEqual(message.Version, '1.0')
         self.assertEqual(message.Message.Place.Name, 'Skypia')
 
+    def test_empty_header(self):
+        xml = self.SOAP.Envelope.response('Get', Place(), self.SOAP.Header())
+        self.assertIn('<ns0:Header/>', xml)
+
 
 class SOAP11_Test(SOAP_TBase, unittest.TestCase):
 

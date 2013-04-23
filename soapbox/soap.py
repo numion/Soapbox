@@ -169,9 +169,13 @@ class Stub(object):
         else:
             _type = method.input
 
-        header = self.header
-        if isinstance(header, dict) and method.inputHeader:
-            header = method.inputHeader(**header)
+        if method.inputHeader:
+            header = self.header
+            if isinstance(header, dict):
+                header = method.inputHeader(**header)
+        else:
+            header = SOAP.Header()
+
         parameter = _type(**kw)
 
         disable_validation = not os.path.exists(settings.CA_CERTIFICATE_FILE)
