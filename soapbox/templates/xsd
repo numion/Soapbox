@@ -105,7 +105,13 @@ class {{ group.name|capitalize }}(xsd.Group):
     attributeGroups=[{% for ag in schema.attributeGroups %}{{ ag.name|capitalize }}{% if not loop.last %}, {% endif %}{% endfor %}],
     groups=[{% for g in schema.groups %}{{ g.name|capitalize }}{% if not loop.last %}, {% endif %}{% endfor %}],
     complexTypes=[{% for ct in schema.complexTypes %}{{ ct.name|capitalize }}{% if not loop.last %}, {% endif %}{% endfor %}],
-    elements={{ '{' }}{% for e in schema.elements %}'{{ e.name }}': xsd.Element({% if e.type %}{{ e.type|typeref }}{% else %}{{ e.name|capitalize }}(){% endif %}){% if not loop.last %}, {% endif %}{% endfor %}{{ '}' }},
+    elements={{ '{' }}
+    {%- for e in schema.elements -%}
+        '{{ e.name }}': xsd.Element({% if e.type %}{{ e.type|typeref }}{% else %}{{ e.name|capitalize }}(){% endif %}
+        {%- if not e.minOccurs is none %}, minOccurs={{ e.minOccurs|upper }}{% endif %}{% if e.nillable %}, nillable=True{% endif %})
+        {%- if not loop.last %}, {% endif %}
+    {%- endfor -%}
+    {{ '}' }},
 )
 {# [blank line] #}
 {# [blank line] #}
