@@ -1110,6 +1110,8 @@ class List(SimpleType):
     def pythonvalue(self, xmlvalue):
         '''
         '''
+        if not xmlvalue:
+            return []
         return map(self.base.pythonvalue, xmlvalue.split())
 
 

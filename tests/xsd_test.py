@@ -387,6 +387,9 @@ class ListTypeTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             status.codes = [7]
 
+        parsed_status = Status.parsexml('<status><codes></codes></status>')
+        self.assertEqual(parsed_status.codes, [])
+
 
 class ComplexTest(unittest.TestCase):
 
