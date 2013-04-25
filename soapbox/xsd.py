@@ -59,6 +59,7 @@ from . import iso8601, settings
 
 
 NIL = object()
+UNBOUNDED = 2**31-1
 
 ################################################################################
 # Classes
@@ -493,7 +494,7 @@ class Integer(Decimal):
             pass  # value is just value continue.
         elif isinstance(value, basestring):
             if value.lower() == 'unbounded':
-                return None
+                return UNBOUNDED
             value = int(value)
         else:
             raise ValueError("Incorrect value '%s' for Decimal field." % value)
