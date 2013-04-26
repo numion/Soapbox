@@ -74,7 +74,8 @@ def remove_namespace(full_typename):
 def capitalize(value):
     '''
     '''
-    return value[0].upper() + value[1:]
+    # XXX capitalize -> classname
+    return (value[0].upper() + value[1:]).replace('.', '')
 
 
 def uncapitalize(value):
